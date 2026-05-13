@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+bun.lock
+yarn.lock
+
+# Development
+.env.local
+.env.*.local
+.DS_Store
+
+# Build output
+dist/
+build/
+.next
+.vite
+
+# Git
+.git
+.github
+
+# Documentation
+docs/
+README.md
+
+# Testing
+coverage/
+.vitest
+.jest
+
+# Tools & Scripts
+tools/
+supabase/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+Thumbs.db
+.DS_Store

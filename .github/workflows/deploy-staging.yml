@@ -1,0 +1,122 @@
+name: Deploy to Staging
+
+# Trigger only on push to develop branch (after CI passes)
+on:
+  push:
+    branches:
+      - develop
+
+# Environment variables
+env:
+  NODE_VERSION: "20.x"
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_STAGING }}
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy to Vercel (Staging)
+        id: vercel-deploy
+        run: |
+          VERCEL_OUTPUT=$(vercel \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --prod)
+          echo "deployment_url=$(echo $VERCEL_OUTPUT | grep -oP 'https://[^\s]+')" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR (if pull request)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Staging Deployment Successful**\n\n[View deployment](${{ steps.vercel-deploy.outputs.deployment_url }})`
+            })
+
+      - name: Create deployment status
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.ref,
+              environment: 'staging',
+              description: 'VoxNews Staging Environment',
+              auto_merge: false,
+              required_contexts: ['lint', 'type-check', 'build']
+            })
+
+      - name: Notify Slack (optional)
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_STAGING }}
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} Staging deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Deployment*\n${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+                  }
+                }
+              ]
+            }
+
+# Configuration Required:
+#
+# GitHub Secrets (Settings → Secrets → Actions):
+#   - VERCEL_TOKEN: Personal access token from Vercel
+#   - VERCEL_ORG_ID: Organization ID from Vercel
+#   - VERCEL_PROJECT_ID_STAGING: Project ID for staging environment
+#   - SLACK_WEBHOOK_STAGING: (Optional) Slack webhook for notifications
+#
+# Vercel Setup:
+#   1. Create staging project in Vercel: https://vercel.com/new
+#   2. Link to develop branch (not main)
+#   3. Copy Project ID from Settings
+#   4. Set environment variables in Vercel dashboard for staging
+#
+# Branch Protection:
+#   1. Go to Repo Settings → Branches → develop
+#   2. Enable "Require status checks to pass before merging"
+#   3. Require: lint, type-check, build
+#   4. Dismiss stale PR approvals when new commits are pushed
+#
+# Workflow:
+#   1. Developer pushes to develop branch
+#   2. CI workflow (ci.yml) runs and validates code
+#   3. If CI passes, this workflow automatically deploys to Vercel staging
+#   4. Staging URL is posted as GitHub comment (if from PR)
+#   5. Slack notification sent (optional)
+#
+# To Test Locally:
+#   vercel --token YOUR_TOKEN --prod

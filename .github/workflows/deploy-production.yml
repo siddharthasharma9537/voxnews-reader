@@ -1,0 +1,274 @@
+name: Deploy to Production
+
+# Trigger only on releases (tags) or manual workflow dispatch
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., v0.1.0)"
+        required: true
+        type: string
+
+# Environment variables
+env:
+  NODE_VERSION: "20.x"
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PRODUCTION }}
+
+jobs:
+  # Pre-deployment validation and approval
+  pre-deployment-check:
+    name: Pre-Deployment Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full CI pipeline
+        run: |
+          npm run lint && \
+          npx tsc --noEmit && \
+          npm run build
+
+      - name: Verify git tag matches version
+        if: github.event_name == 'release'
+        run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "v$PACKAGE_VERSION" ]; then
+            echo "❌ Git tag ($TAG_VERSION) does not match package.json version (v$PACKAGE_VERSION)"
+            exit 1
+          fi
+          echo "✅ Version verification passed"
+
+      - name: Generate deployment summary
+        id: summary
+        run: |
+          COMMIT_SHA=${{ github.sha }}
+          COMMIT_MSG=$(git log --format=%B -n 1 ${COMMIT_SHA:0:7})
+          VERSION="${{ github.event.release.tag_name || github.event.inputs.version }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit_sha=${COMMIT_SHA:0:7}" >> $GITHUB_OUTPUT
+          echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+
+    outputs:
+      version: ${{ steps.summary.outputs.version }}
+      commit_sha: ${{ steps.summary.outputs.commit_sha }}
+
+  # Production deployment (requires approval)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: pre-deployment-check
+    environment:
+      name: production
+      url: ${{ steps.vercel-deploy.outputs.deployment_url }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for production
+        run: npm run build
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy to Vercel (Production)
+        id: vercel-deploy
+        run: |
+          VERCEL_OUTPUT=$(vercel \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --prod \
+            --build-env NODE_ENV=production \
+            --build-env APP_ENV=production)
+          echo "deployment_url=$(echo $VERCEL_OUTPUT | grep -oP 'https://[^\s]+')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          script: |
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: '${{ needs.pre-deployment-check.outputs.version }}',
+              name: 'Release ${{ needs.pre-deployment-check.outputs.version }}',
+              body: `
+**Deployment Details**
+- **Version:** ${{ needs.pre-deployment-check.outputs.version }}
+- **Commit:** ${{ needs.pre-deployment-check.outputs.commit_sha }}
+- **URL:** ${{ steps.vercel-deploy.outputs.deployment_url }}
+- **Deployed at:** $(date)
+              `,
+              draft: false,
+              prerelease: false
+            })
+
+      - name: Create production deployment record
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ github.run_id }},
+              state: 'success',
+              environment_url: '${{ steps.vercel-deploy.outputs.deployment_url }}',
+              description: 'Production deployment successful',
+              auto_merge: false
+            })
+
+      - name: Notify Slack - Deployment Success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_PRODUCTION }}
+          payload: |
+            {
+              "text": "✅ Production Deployment Successful",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Production Deployment"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Version:*\n${{ needs.pre-deployment-check.outputs.version }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n`${{ needs.pre-deployment-check.outputs.commit_sha }}`"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ steps.vercel-deploy.outputs.deployment_url }}|View Live Deployment>"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack - Deployment Failed
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_PRODUCTION }}
+          payload: |
+            {
+              "text": "❌ Production Deployment Failed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "❌ Production Deployment Failed"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Logs>"
+                  }
+                }
+              ]
+            }
+
+# Configuration Required:
+#
+# GitHub Secrets (Settings → Secrets → Actions):
+#   - VERCEL_TOKEN: Personal access token from Vercel (requires write access)
+#   - VERCEL_ORG_ID: Organization ID from Vercel
+#   - VERCEL_PROJECT_ID_PRODUCTION: Project ID for production environment
+#   - SLACK_WEBHOOK_PRODUCTION: Slack webhook for notifications
+#
+# Environment Protection:
+#   1. Go to Repo Settings → Environments → Create "production"
+#   2. Enable "Require reviewers" (require at least 1 approval)
+#   3. Add team members or specific users who can approve deployments
+#   4. Set deployment branches to "Deployment protection rules"
+#   5. Require deployments to be made from main branch only
+#
+# Vercel Setup:
+#   1. Create production project in Vercel
+#   2. Link to main branch
+#   3. Copy Project ID from Settings
+#   4. Set environment variables in Vercel dashboard for production
+#   5. Enable "Automatic Git Integrations" in Project Settings
+#
+# Git Setup:
+#   1. Create release tags: git tag -a v0.1.0 -m "Release 0.1.0"
+#   2. Push tags: git push --tags
+#   3. GitHub automatically creates Release from tag
+#   4. Deployment workflow triggers automatically
+#
+# Deployment Flow:
+#   **Option 1: Automated Release (Recommended)**
+#   1. Create a git tag: git tag -a v0.1.0 -m "Release 0.1.0"
+#   2. Push tag: git push origin --tags
+#   3. GitHub creates Release automatically
+#   4. Deployment workflow triggers and waits for approval
+#   5. Reviewer approves in GitHub Actions tab
+#   6. Deployment proceeds to production
+#
+#   **Option 2: Manual Deployment**
+#   1. Go to GitHub Actions → Deploy to Production
+#   2. Click "Run workflow"
+#   3. Enter version number (e.g., v0.1.0)
+#   4. Workflow runs pre-deployment checks
+#   5. Waits for approval (requires reviewer)
+#   6. Deployment proceeds after approval
+#
+# Approval Process:
+#   1. Workflow creates "deployment" environment
+#   2. Requires at least 1 approval from configured reviewers
+#   3. Approval happens in Actions tab under "Waiting for you to review"
+#   4. Reviewer clicks "Approve and deploy"
+#   5. Deployment proceeds automatically after approval
+#
+# Rollback Process:
+#   If production deployment has issues:
+#   1. Go to Vercel dashboard
+#   2. Select production project
+#   3. Click "Deployments"
+#   4. Find previous stable version
+#   5. Click "Promote to Production"
+#   (Alternative: redeploy from previous git tag using manual workflow dispatch)
+#
+# Safety Features:
+#   1. Pre-deployment validation (lint, type-check, build)
+#   2. Version verification (git tag matches package.json)
+#   3. Environment approval required
+#   4. Slack notifications for status
+#   5. GitHub deployment records for audit trail

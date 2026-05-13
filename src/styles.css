@@ -1,0 +1,134 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-saffron: var(--saffron);
+  --color-saffron-foreground: var(--saffron-foreground);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-paper-shade: var(--paper-shade);
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  --shadow-paper: 0 1px 0 oklch(0.85 0.02 80), 0 8px 24px -12px oklch(0.2 0.04 60 / 0.18);
+  --shadow-lift: 0 12px 32px -16px oklch(0.2 0.04 60 / 0.25);
+}
+
+:root {
+  --radius: 0.875rem;
+
+  /* Paper-white & deep-ink palette */
+  --paper: oklch(0.985 0.012 85);          /* warm paper white */
+  --paper-shade: oklch(0.955 0.018 82);    /* slight paper tint */
+  --ink: oklch(0.20 0.025 60);             /* deep newsprint ink */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+
+  --card: oklch(0.995 0.008 85);
+  --card-foreground: var(--ink);
+  --popover: var(--card);
+  --popover-foreground: var(--ink);
+
+  --primary: oklch(0.22 0.03 55);          /* deep ink button */
+  --primary-foreground: oklch(0.985 0.012 85);
+
+  --secondary: oklch(0.94 0.02 80);
+  --secondary-foreground: var(--ink);
+
+  --muted: oklch(0.94 0.018 82);
+  --muted-foreground: oklch(0.45 0.025 65);
+
+  --accent: oklch(0.92 0.03 75);
+  --accent-foreground: var(--ink);
+
+  --saffron: oklch(0.72 0.16 55);          /* India saffron accent */
+  --saffron-foreground: oklch(0.18 0.03 55);
+
+  --destructive: oklch(0.55 0.20 27);
+  --destructive-foreground: oklch(0.985 0.012 85);
+
+  --border: oklch(0.88 0.02 80);
+  --input: oklch(0.88 0.02 80);
+  --ring: oklch(0.72 0.16 55);
+
+  --chart-1: oklch(0.72 0.16 55);
+  --chart-2: oklch(0.55 0.10 160);
+  --chart-3: oklch(0.45 0.10 240);
+  --chart-4: oklch(0.65 0.15 30);
+  --chart-5: oklch(0.40 0.05 80);
+
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html, body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 17px; /* larger base for accessibility */
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer utilities {
+  .newsprint-grain {
+    background-image:
+      radial-gradient(oklch(0.2 0.03 60 / 0.04) 1px, transparent 1px),
+      radial-gradient(oklch(0.2 0.03 60 / 0.03) 1px, transparent 1px);
+    background-size: 6px 6px, 11px 11px;
+    background-position: 0 0, 3px 3px;
+  }
+  .rule-line {
+    background-image: linear-gradient(to right,
+      var(--color-border) 0, var(--color-border) 4px,
+      transparent 4px, transparent 10px);
+    background-size: 10px 1px;
+    background-repeat: repeat-x;
+  }
+}
