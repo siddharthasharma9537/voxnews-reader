@@ -1,17 +1,12 @@
 {
+  "version": 2,
+  "framework": "vite",
   "buildCommand": "npm run build",
-  "framework": null,
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/api/index"
-    }
-  ]
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
+  "regions": ["sfo1"],
+  "public": false
 }
-
-
-
-
 
 
 
